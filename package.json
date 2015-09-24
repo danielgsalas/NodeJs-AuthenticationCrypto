@@ -1,5 +1,5 @@
 {
-    "name": "node-api",
+    "name": "NodeJs-AuthenticationCrypto",
     "main": "server.js",
     "dependencies": {
         "express": "~4.0.0",
