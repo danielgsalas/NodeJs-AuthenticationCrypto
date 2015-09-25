@@ -26,7 +26,7 @@ router.use(function(req, res, next) {
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
     
 	// do logging
-    console.log("Received request: " + req.url);
+    console.log("Received " + req.method + " request: " + req.url);
     next(); // make sure we go to the next routes and don't stop here
 });
 
@@ -99,7 +99,7 @@ router.route('/fulltest')
 						
 						var oldPassword = body.password;
 						
-						// create a new password for the user
+						// change user's password
 						var authCrypto = require("./app/crypto/authenticationCrypto");
 						var passwordLength = 8;
 						var newPassword = authCrypto.getRandomChars(passwordLength);
@@ -123,7 +123,30 @@ router.route('/fulltest')
 								body = JSON.parse(body);
 								console.log(body);
 								
-								res.status(500).send("Test successful so far but not complete");
+								// get user's salt
+								
+								var options = {
+									url: "http://localhost:8080/api/salt/" + username,
+									method: 'GET',
+									headers: headers
+								};
+								
+								request (options, function(error, response, body) {
+									if (!error && response.statusCode == 200) {
+										
+										// convert String key names to field names
+										body = JSON.parse(body);
+										console.log(body);
+										
+										var salt = body.salt;
+										
+										res.status(500).send("Test successful so far but not complete");
+									}
+									else {
+										console.log(error);
+										res.status(500).send(error);
+									}
+								});
 							}
 							else {
 								console.log(error);
@@ -344,6 +367,52 @@ router.route("/randomChars/:length")
 			});
 		}		
     });
+
+// Get the salt for a given user
+router.route("/salt/:username")
+
+	.get(function(req, res) {
+		
+		var mongoose = require('mongoose');
+		
+		if (mongoose.connection.readyState == 0) { // disconnected
+			mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
+		}
+
+    	var User = require('./app/models/user');
+    	
+    	User.find(
+    		{ username : req.params.username },
+        	function (error, result) {
+    			
+    			if (error) {
+    				console.log(error);
+    				res.status(500).send(error);
+    			}
+    			else if (result.length == 0) {
+    				var message = "User not found: ";
+        			message += req.params.username;
+        			
+        			var error = new Error(message);
+        			console.log(error);
+    				res.status(500).send(error);
+    			}
+    			else if (result.length > 1) {
+    				var message = result.length + " users found: ";
+        			message += req.params.username;
+        			
+        			var error = new Error(message);
+        			console.log(error);
+    				res.status(500).send(error);
+    			}
+    			else {
+    				res.json({ salt : result[0].salt });
+    			}
+        		
+        		mongoose.disconnect();
+        	}
+        );
+	});
 
 /*
  * Create, read, update or delete a user.
