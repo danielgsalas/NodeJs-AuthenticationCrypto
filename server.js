@@ -77,23 +77,59 @@ router.route('/fulltest')
 			if (!error && response.statusCode == 200) {
 				
 				// convert String key names to field names
-				body = JSON.parse(body);		
+				body = JSON.parse(body);
 				console.log(body);
+				
+				var userid = body.userid;
 				
 				// create a new password for the user
 				var options = {
 					url: "http://localhost:8080/api/password",
 					method: 'POST',
 					headers: headers,
-					form: { username : username, userid : body.userid }
-				};				
+					form: { username : username, userid : userid }
+				};
 				
 				request (options, function(error, response, body) {
 					if (!error && response.statusCode == 200) {
 						
+						// convert String key names to field names
+						body = JSON.parse(body);
 						console.log(body);
 						
-						res.status(500).send("Test successful so far but not complete");
+						var oldPassword = body.password;
+						
+						// create a new password for the user
+						var authCrypto = require("./app/crypto/authenticationCrypto");
+						var passwordLength = 8;
+						var newPassword = authCrypto.getRandomChars(passwordLength);
+						
+						var url = "http://localhost:8080/api/password/";
+						url += username + "/";
+						url += userid + "/";
+						url += oldPassword + "/";
+						url += newPassword;
+						
+						var options = {
+							url: url,
+							method: 'PUT',
+							headers: headers
+						};
+						
+						request (options, function(error, response, body) {
+							if (!error && response.statusCode == 200) {
+								
+								// convert String key names to field names
+								body = JSON.parse(body);
+								console.log(body);
+								
+								res.status(500).send("Test successful so far but not complete");
+							}
+							else {
+								console.log(error);
+								res.status(500).send(error);
+							}
+						});
 					}
 					else {
 						console.log(error);
@@ -108,12 +144,20 @@ router.route('/fulltest')
 		});
 	});
 
-
 /*
  * Create a user's password
  */
 router.route("/password")
 
+	/*
+	 * Create a user's password
+	 * 
+	 * required input: 
+	 * { 
+	 * 		username:username, 
+	 * 		userid:userid
+	 * }
+	 */
 	.post(function(req, res) {
     	
     	var authCrypto = require("./app/crypto/authenticationCrypto");
@@ -131,10 +175,13 @@ router.route("/password")
     	
     	var encryptionAlgorithm = "aes256";
     	var encryptedSaltedPassword = authCrypto.encrypt(
-    		encryptionAlgorithm, encryptionKey, saltedPassword);    	
+    		encryptionAlgorithm, encryptionKey, saltedPassword);
 		
 		var mongoose = require('mongoose');
-    	mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
+
+		if (mongoose.connection.readyState == 0) { // disconnected
+			mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
+		}
     	
     	var User = require('./app/models/user');
     	
@@ -144,7 +191,8 @@ router.route("/password")
     		{ $set: { 
     			salt : salt, 
     			encryptionKey : encryptionKey,
-    			password : encryptedSaltedPassword}},
+    			password : encryptedSaltedPassword
+    		}},
     		
     		function (error, result) {
     				
@@ -172,6 +220,105 @@ router.route("/password")
     			}
     		}
     	);
+	});
+
+/*
+ * Change a user's password
+ */
+router.route("/password/:username/:userid/:oldPassword/:newPassword")	
+	
+	.put(function(req, res) {
+		
+		var mongoose = require('mongoose');
+		
+		if (mongoose.connection.readyState == 0) { // disconnected
+			mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
+		}
+
+    	var User = require('./app/models/user');
+    	
+    	User.find(
+    		{ userid : req.params.userid, 
+        		username : req.params.username },
+        	function (error, result) {
+        		if (error) {
+        			console.log(error);
+    				res.status(500).send(error);
+    				mongoose.disconnect();
+        		}
+        		else if (result.length == 0) {
+        			var message = "User not found: ";
+        			message += req.params.username;
+        			
+        			var error = new Error(message);
+        			console.log(error);
+    				res.status(500).send(error);
+    				mongoose.disconnect();
+        		}
+        		else if (result.length > 1) {
+        			var message = result.length + " users found: ";
+        			message += req.params.username;
+        			
+        			var error = new Error(message);
+        			console.log(error);
+    				res.status(500).send(error);
+    				mongoose.disconnect();
+        		}
+        		else {
+
+        			// get the user's salt and encryption key
+        			var salt = result[0].salt;
+        			var encryptionKey = result[0].encryptionKey;
+
+        			// salt and encrypt the old and new passwords
+        			
+        			var saltedOldPassword = req.params.oldPassword + salt;
+        			var saltedNewPassword = req.params.newPassword + salt;
+        			
+        			var authCrypto = require("./app/crypto/authenticationCrypto");
+        			var encryptionAlgorithm = "aes256";
+        			
+        	    	var encryptedSaltedOldPassword = authCrypto.encrypt(
+        	    		encryptionAlgorithm, encryptionKey, saltedOldPassword);
+        	    	
+        	    	var encryptedSaltedNewPassword = authCrypto.encrypt(
+            	    	encryptionAlgorithm, encryptionKey, saltedNewPassword);
+        			
+        			// save the new salted encrypted password
+        	    	
+        	    	User.update(
+        	        	{ userid : req.params.userid, 
+        	        		username : req.params.username,
+        	        		password : encryptedSaltedOldPassword },
+        	        	{ $set: { 
+        	        		password : encryptedSaltedNewPassword
+        	        	}},
+        	        		
+        	        	function (error, result) {
+
+        	        		if (error) {        	        			
+        	        			console.log(error);
+        	    				res.status(500).send(error);
+        	    				mongoose.disconnect();
+        	        		}
+        	        		else if (result != 1) {
+        	        			var message = "New password not saved for ";
+        	        			message += req.params.username;
+        	        			
+        	        			var error = new Error(message);
+        	        			console.log(error);
+        	    				res.status(500).send(error);
+        	    				mongoose.disconnect();
+        	        		}
+        	        		else {
+        	        			res.json({ success : true });
+        	        		}
+        	        	}
+        	        );
+        		}
+        	}		
+    	);
+		
 	});
 
 // Create a string of random digits and letters (upper and lower case).
@@ -223,7 +370,10 @@ router.route('/user')
     .post(function(req, res) {
 
     	var mongoose = require('mongoose');
-    	mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
+
+    	if (mongoose.connection.readyState == 0) { // disconnected
+			mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
+		}
     	
     	var authCrypto = require("./app/crypto/authenticationCrypto");
     	var userIdLength = 32;
