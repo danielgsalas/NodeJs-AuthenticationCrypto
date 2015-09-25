@@ -166,12 +166,28 @@ router.route('/fulltest')
 												}
 												else if (body.userid != userid) {
 													var message = "Sign-in failed - "
-														message += "wrong id found for " + username
-														res.status(500).send(message);
+													message += "wrong id found for " + username
+													res.status(500).send(message);
 												}
 												else
 												{
-													res.json({ success : true });
+													// delete the test user
+													
+													var options = {
+														url: url,
+														method: 'DELETE',
+														headers: headers
+													};
+													
+													request (options, function(error, response, body) {
+														if (!error && response.statusCode == 200) {
+															res.json({ success : true });
+														}
+														else {
+															console.log(error);
+															res.status(500).send(error);
+														}
+													});
 												}
 											}
 											else {
@@ -207,18 +223,15 @@ router.route('/fulltest')
 
 /*
  * Create a user's password
+ * 
+ * required input: 
+ * { 
+ * 		username:username, 
+ * 		userid:userid
+ * }
  */
 router.route("/password")
 
-	/*
-	 * Create a user's password
-	 * 
-	 * required input: 
-	 * { 
-	 * 		username:username, 
-	 * 		userid:userid
-	 * }
-	 */
 	.post(function(req, res) {
     	
     	var authCrypto = require("./app/crypto/authenticationCrypto");
@@ -453,13 +466,11 @@ router.route("/salt/:username")
 	});
 
 /*
- * Create, read, update or delete a user.
+ * Create e a user
  */
 router.route('/user')
 
 	/*
-	 * Create a user
-	 * 
 	 * Manual test procedure:
 	 * 1. Run MondoDB server
 	 * 2. Run Node.js server
@@ -502,6 +513,88 @@ router.route('/user')
             	mongoose.disconnect();
             }
         });
+    });
+
+/*
+ * Delete a user
+ */
+router.route('/user/:username/:password')
+
+    .delete(function(req, res) {
+    	
+    	var request = require('request');
+    	
+    	var headers = {
+    		'User-Agent': 'Super Agent/0.0.1',
+    		'Content-Type': 'application/x-www-form-urlencoded'
+    	}
+    	
+    	var url = "http://localhost:8080/api/user/";
+    	url += req.params.username + "/" + req.params.password;
+    	
+    	var options = {
+			url: url,
+			method: 'GET',
+			headers: headers
+		};
+    	
+    	request (options, function(error, response, body) {
+			if (!error && response.statusCode == 200) {
+				
+				// convert String key names to field names
+				body = JSON.parse(body);
+				console.log(body);
+
+				if (body.userid == null) {
+					var message = "Sign-in failed - "
+					message += "no id found for " + username
+					res.status(500).send(message);
+				}
+				else
+				{
+					var mongoose = require('mongoose');
+
+			    	if (mongoose.connection.readyState == 0) { // disconnected
+						mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
+					}
+			    	
+			    	var User = require('./app/models/user');
+			    	
+			    	User.remove(
+			    		{ username : req.params.username,
+			    			userid : body.userid },
+			    		function (error, result) {
+			        			
+			        		if (error) {
+			        			console.log(error);
+			        			res.status(500).send(error);
+			        		}
+			        		else if (result.length == 0) {
+			        			var message = "User not found: ";
+			            		message += req.params.username;
+			            			
+			            		var error = new Error(message);
+			            		console.log(error);
+			        			res.status(500).send(error);
+			        		}
+			        		else if (result.length > 1) {
+			        			var message = result.length + " users found: ";
+			            		message += req.params.username;
+			            			
+			            		var error = new Error(message);
+			            		console.log(error);
+			        			res.status(500).send(error);
+			        		}
+			        		else {
+			        			res.json({ success : true });
+			        		}
+			            		
+			            	mongoose.disconnect();
+			            }
+			    	);
+				}
+			}
+    	});    	
     });
 
 /*
