@@ -140,7 +140,45 @@ router.route('/fulltest')
 										
 										var salt = body.salt;
 										
-										res.status(500).send("Test successful so far but not complete");
+										// sign in the user
+										
+										url = "http://localhost:8080/api/user/";
+										url += username + "/";
+										url += newPassword + salt;
+										
+										var options = {
+											url: url,
+											method: 'GET',
+											headers: headers
+										};
+										
+										request (options, function(error, response, body) {
+											if (!error && response.statusCode == 200) {
+												
+												// convert String key names to field names
+												body = JSON.parse(body);
+												console.log(body);
+
+												if (body.userid == null) {
+													var message = "Sign-in failed - "
+													message += "no id found for " + username
+													res.status(500).send(message);
+												}
+												else if (body.userid != userid) {
+													var message = "Sign-in failed - "
+														message += "wrong id found for " + username
+														res.status(500).send(message);
+												}
+												else
+												{
+													res.json({ success : true });
+												}
+											}
+											else {
+												console.log(error);
+												res.status(500).send(error);
+											}
+										});
 									}
 									else {
 										console.log(error);
@@ -465,6 +503,88 @@ router.route('/user')
             }
         });
     });
+
+/*
+ * Sign in a user with given user name and *salted* password
+ */
+router.route('/user/:username/:password')
+
+	.get(function(req, res) {
+		
+		var mongoose = require('mongoose');
+		
+		if (mongoose.connection.readyState == 0) { // disconnected
+			mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
+		}
+
+    	var User = require('./app/models/user');
+    	
+    	User.find(
+        	{ username : req.params.username },
+            function (error, result) {
+        		if (error) {
+    				console.log(error);
+    				res.status(500).send(error);
+    			}
+    			else if (result.length == 0) {
+    				var message = "User not found: ";
+        			message += req.params.username;
+        			
+        			var error = new Error(message);
+        			console.log(error);
+    				res.status(500).send(error);
+    			}
+    			else if (result.length > 1) {
+    				var message = result.length + " users found: ";
+        			message += req.params.username;
+        			
+        			var error = new Error(message);
+        			console.log(error);
+    				res.status(500).send(error);
+    			}
+    			else {
+    				var authCrypto = require("./app/crypto/authenticationCrypto");
+    				var encryptionAlgorithm = "aes256";
+    				var encryptionKey = result[0].encryptionKey;
+    				
+    				var encryptedSaltedPassword = authCrypto.encrypt(
+                	    encryptionAlgorithm, encryptionKey, req.params.password);
+    				
+    				User.find(
+    			        { username : req.params.username,
+    			        	password : encryptedSaltedPassword },
+    			        function (error, result) {
+    			        	if (error) {
+    			    			console.log(error);
+    			    			res.status(500).send(error);
+    			    		}
+    			    		else if (result.length == 0) {
+    			    			var message = "User not found: ";
+    			        		message += req.params.username;
+    			        			
+    			        		var error = new Error(message);
+    			        		console.log(error);
+    			    			res.status(500).send(error);
+    			    		}
+    			    		else if (result.length > 1) {
+    			    			var message = result.length + " users found: ";
+    			        		message += req.params.username;
+    			        			
+    			        		var error = new Error(message);
+    			        		console.log(error);
+    			    			res.status(500).send(error);
+    			    		}
+    			    		else {
+    			    			res.json({ userid : result[0].userid });
+    			    		}
+    			        	
+    			        	mongoose.disconnect();
+    			        }
+    			    );
+    			}
+        	}
+        );		
+	});
 
 //REGISTER OUR ROUTES -------------------------------
 //all of our routes will be prefixed with /api
