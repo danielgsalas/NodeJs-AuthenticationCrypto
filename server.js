@@ -42,18 +42,46 @@ router.route('/fulltest')
 		/*
 		 * 
 		 * Test user preparation:
-		 * 1. create salt
-		 * 2. create username
-		 * 3. save username and salt
-		 * 4. create password (mock email)
-		 * 5. change password
+		 * 1. create and persist user
+		 * 2. create and persist password and salt
+		 *    a. for localhost, return password in response body
+		 *    b. otherwise, email password to username
+		 * 3. change password
 		 * 
 		 * Test sign in:
 		 * 1. get salt for user name
-		 * 3. submit username and salted password
+		 * 3. submit username and salted password to get userid
 		 */
-	
-		res.status(401).send("Test not complete");
+		
+		// Documentation: https://github.com/request/request
+		// To install: >npm install request --save
+		var request = require('request');
+		
+		var authCrypto = require("./app/crypto/authenticationCrypto");
+		var userNamePrefixLength = 8;
+		var username = authCrypto.getRandomChars(userNamePrefixLength) + "@localhost.com";
+
+		var headers = {
+			'User-Agent': 'Super Agent/0.0.1',
+			'Content-Type': 'application/x-www-form-urlencoded'
+		}
+		
+		var options = {
+			url: "http://localhost:8080/api/user",
+			method: 'POST',
+			headers: headers,
+			form: { username : username }
+		};
+		
+		request (options, function(error, response, body) {
+			if (!error && response.statusCode == 200) {
+		        res.status(500).send("Test successful so far but not complete");
+		    }
+			else {
+				console.log(error);
+				res.status(500).send(error);
+			}
+		});
 	});
 
 // Create a string of random digits and letters (upper and lower case).
@@ -106,10 +134,14 @@ router.route('/user')
 
     	var mongoose = require('mongoose');
     	mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
+    	
+    	var authCrypto = require("./app/crypto/authenticationCrypto");
+    	var userIdLength = 32;
 
     	var User = require('./app/models/user');
 
     	var user = new User();      // create a new instance of the User model
+    	user.userid = authCrypto.getRandomChars(userIdLength);
     	user.username = req.body.username;  // set the user's name (comes from the request)
 
         // save the user and check for errors
@@ -119,7 +151,7 @@ router.route('/user')
                 mongoose.disconnect();
             }
             else {
-            	res.json({ message: 'Created ' + user.username });
+            	res.json({ success: true });
             	mongoose.disconnect();
             }
         });
