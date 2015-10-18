@@ -1,5 +1,5 @@
 
-// aedtsCrypto.js
+// authenticationCrypto.js
 
 (function() {
 	
