@@ -151,7 +151,7 @@ router.route('/fulltest')
 		}
 		
 		var options = {
-			url: "http://localhost:8080/api/user",
+			url: "http://localhost:8080/api/newuser",
 			method: 'POST',
 			headers: headers,
 			form: { username : username }
@@ -168,7 +168,7 @@ router.route('/fulltest')
 				
 				// create a new password for the user
 				var options = {
-					url: "http://localhost:8080/api/password",
+					url: "http://localhost:8080/api/newpassword",
 					method: 'POST',
 					headers: headers,
 					form: { username : username, userid : userid }
@@ -319,7 +319,7 @@ router.route('/fulltest')
  * 		userid:userid
  * }
  */
-router.route("/password")
+router.route("/newpassword")
 
 	.post(function(req, res) {
     	
@@ -384,6 +384,56 @@ router.route("/password")
     		}
     	);
 	});
+
+/*
+ * Create a user
+ */
+router.route('/newuser')
+
+	/*
+	 * Manual test procedure:
+	 * 1. Run MongoDB server (run mongod at command line)
+	 * 2. Run Node.js server
+	 * 3. Run Postman
+	 *    a. Post to http://localhost:8080/api/newuser
+	 *    b. Set name/value pairs in X-www-form-urlencoded content type
+	 *    c. Hit Send
+	 * 4. Run MongoDB CLI
+	 *    a. show dbs
+	 *    b. use authentication_tutorial
+	 *    c. show collections
+	 *    d. db.users.count();
+	 *    e. db.users.find();
+	 */
+    .post(function(req, res) {
+
+    	var mongoose = require('mongoose');
+
+    	if (mongoose.connection.readyState == 0) { // disconnected
+			mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
+		}
+    	
+    	var authCrypto = require("./app/crypto/authenticationCrypto");
+    	var userIdLength = 32;
+
+    	var User = require('./app/models/user');
+
+    	var user = new User();      // create a new instance of the User model
+    	user.userid = authCrypto.getRandomChars(userIdLength);
+    	user.username = req.body.username;  // set the user's name (comes from the request)
+
+        // save the user and check for errors
+    	user.save(function(err) {
+            if (err) {
+                res.send(err);
+                mongoose.disconnect();
+            }
+            else {
+            	res.json({ userid : user.userid });
+            	mongoose.disconnect();
+            }
+        });
+    });
 
 /*
  * Change a user's password
@@ -553,56 +603,6 @@ router.route("/salt/:username")
         	}
         );
 	});
-
-/*
- * Create a user
- */
-router.route('/user')
-
-	/*
-	 * Manual test procedure:
-	 * 1. Run MongoDB server (run mongod at command line)
-	 * 2. Run Node.js server
-	 * 3. Run Postman
-	 *    a. Post to http://localhost:8080/api/user
-	 *    b. Set name/value pairs in X-www-form-urlencoded content type
-	 *    c. Hit Send
-	 * 4. Run MongoDB CLI
-	 *    a. show dbs
-	 *    b. use authentication_tutorial
-	 *    c. show collections
-	 *    d. db.users.count();
-	 *    e. db.users.find();
-	 */
-    .post(function(req, res) {
-
-    	var mongoose = require('mongoose');
-
-    	if (mongoose.connection.readyState == 0) { // disconnected
-			mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
-		}
-    	
-    	var authCrypto = require("./app/crypto/authenticationCrypto");
-    	var userIdLength = 32;
-
-    	var User = require('./app/models/user');
-
-    	var user = new User();      // create a new instance of the User model
-    	user.userid = authCrypto.getRandomChars(userIdLength);
-    	user.username = req.body.username;  // set the user's name (comes from the request)
-
-        // save the user and check for errors
-    	user.save(function(err) {
-            if (err) {
-                res.send(err);
-                mongoose.disconnect();
-            }
-            else {
-            	res.json({ userid : user.userid });
-            	mongoose.disconnect();
-            }
-        });
-    });
 
 /*
  * Delete a user
