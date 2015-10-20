@@ -328,8 +328,10 @@ router.route("/newpassword")
     	var passwordLength = 6;
     	var password = authCrypto.getRandomChars(passwordLength);
     	
-    	var saltLength = 32;
-    	var salt = authCrypto.getRandomChars(saltLength);
+    	// see https://github.com/shaneGirish/bcrypt-nodejs    	
+    	var bCrypt = require("./app/bcrypt/bCrypt");
+    	var numberOfRounds = 10;
+    	var salt = bCrypt.genSaltSync(numberOfRounds);
     	
     	var saltedPassword = password + salt;
     	
