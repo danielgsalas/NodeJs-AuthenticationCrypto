@@ -33,7 +33,7 @@ router.use(function(req, res, next) {
 /*
  * Authenticate a user with given user name and *salted* password
  * 
- * Required POST params: username, password (= raw password + salt)
+ * Required POST params: username, password, salt
  */
 router.route('/authenticateduser')
 
@@ -47,8 +47,13 @@ router.route('/authenticateduser')
 
     	var User = require('./app/models/user');
     	
+    	// see https://github.com/shaneGirish/bcrypt-nodejs    	
+    	var bCrypt = require("./app/bcrypt/bCrypt");    				
+		var saltedPasswordHash = bCrypt.hashSync(req.body.password, req.body.salt);
+
     	User.find(
-        	{ username : req.body.username },
+        	{ username : req.body.username,
+		      password : saltedPasswordHash },
             function (error, result) {
         		if (error) {
     				console.log(error);
@@ -71,44 +76,10 @@ router.route('/authenticateduser')
     				res.status(500).send(error);
     			}
     			else {
-    				var authCrypto = require("./app/crypto/authenticationCrypto");
-    				var encryptionAlgorithm = "aes256";
-    				var encryptionKey = result[0].encryptionKey;
     				
-    				var encryptedSaltedPassword = authCrypto.encrypt(
-                	    encryptionAlgorithm, encryptionKey, req.body.password);
+    				res.json({ userid : result[0].userid });
     				
-    				User.find(
-    			        { username : req.body.username,
-    			          password : encryptedSaltedPassword },
-    			        function (error, result) {
-    			        	if (error) {
-    			    			console.log(error);
-    			    			res.status(500).send(error);
-    			    		}
-    			    		else if (result.length == 0) {
-    			    			var message = "User not found: ";
-    			        		message += req.body.username;
-    			        			
-    			        		var error = new Error(message);
-    			        		console.log(error);
-    			    			res.status(500).send(error);
-    			    		}
-    			    		else if (result.length > 1) {
-    			    			var message = result.length + " users found: ";
-    			        		message += req.body.username;
-    			        			
-    			        		var error = new Error(message);
-    			        		console.log(error);
-    			    			res.status(500).send(error);
-    			    		}
-    			    		else {
-    			    			res.json({ userid : result[0].userid });
-    			    		}
-    			        	
-    			        	mongoose.disconnect();
-    			        }
-    			    );
+    				mongoose.disconnect();
     			}
         	}
         );		
@@ -122,6 +93,8 @@ router.route('/authenticateduser')
 router.route('/fulltest')
 
 	.get(function(req, res) {
+		
+		console.log("-- START fulltest --");
 	
 		/*
 		 * 
@@ -157,6 +130,8 @@ router.route('/fulltest')
 			form: { username : username }
 		};
 		
+		console.log("-- CREATE new user --");
+		
 		request (options, function(error, response, body) {
 			if (!error && response.statusCode == 200) {
 				
@@ -173,6 +148,8 @@ router.route('/fulltest')
 					headers: headers,
 					form: { username : username, userid : userid }
 				};
+				
+				console.log("-- CREATE new password --");
 				
 				request (options, function(error, response, body) {
 					if (!error && response.statusCode == 200) {
@@ -200,6 +177,8 @@ router.route('/fulltest')
 							headers: headers
 						};
 						
+						console.log("-- CHANGE password --");
+						
 						request (options, function(error, response, body) {
 							if (!error && response.statusCode == 200) {
 								
@@ -214,6 +193,8 @@ router.route('/fulltest')
 									method: 'GET',
 									headers: headers
 								};
+								
+								console.log("-- GET salt --");
 								
 								request (options, function(error, response, body) {
 									if (!error && response.statusCode == 200) {
@@ -232,8 +213,13 @@ router.route('/fulltest')
 											url: url,
 											method: 'POST',
 											headers: headers,
-											form: { username : username, password : newPassword + salt }
+											form: { 
+												username : username, 
+												password : newPassword,
+												salt : salt }
 										};
+										
+										console.log("-- AUTHENTICATE user --");
 										
 										request (options, function(error, response, body) {
 											if (!error && response.statusCode == 200) {
@@ -265,15 +251,21 @@ router.route('/fulltest')
 														method: 'DELETE',
 														headers: headers
 													};
+													
+													console.log("-- DELETE user --");
 
 													request (options, function(error, response, body) {
 														if (!error && response.statusCode == 200) {															
 															var fullTestResult = { success : true };
 															console.log(JSON.stringify(fullTestResult));
+															
+															console.log("-- END fulltest --");
+															
 															res.json(fullTestResult);
 														}
 														else {
 															console.log(error);
+															console.log("-- END fulltest --");
 															res.status(500).send(error);
 														}
 													});
@@ -281,30 +273,35 @@ router.route('/fulltest')
 											}
 											else {
 												console.log(error);
+												console.log("-- END fulltest --");
 												res.status(500).send(error);
 											}
 										});
 									}
 									else {
 										console.log(error);
+										console.log("-- END fulltest --");
 										res.status(500).send(error);
 									}
 								});
 							}
 							else {
 								console.log(error);
+								console.log("-- END fulltest --");
 								res.status(500).send(error);
 							}
 						});
 					}
 					else {
 						console.log(error);
+						console.log("-- END fulltest --");
 						res.status(500).send(error);
 					}
 				});
 		    }
 			else {
 				console.log(error);
+				console.log("-- END fulltest --");
 				res.status(500).send(error);
 			}
 		});
@@ -328,20 +325,12 @@ router.route("/newpassword")
     	var passwordLength = 6;
     	var password = authCrypto.getRandomChars(passwordLength);
     	
-    	// see https://github.com/shaneGirish/bcrypt-nodejs    	
+    	// see https://github.com/shaneGirish/bcrypt-nodejs
     	var bCrypt = require("./app/bcrypt/bCrypt");
     	var numberOfRounds = 10;
     	var salt = bCrypt.genSaltSync(numberOfRounds);
-    	
-    	var saltedPassword = password + salt;
-    	
-    	var encryptionKeyLength = 32;
-    	var encryptionKey = authCrypto.getRandomChars(encryptionKeyLength);
-    	
-    	var encryptionAlgorithm = "aes256";
-    	var encryptedSaltedPassword = authCrypto.encrypt(
-    		encryptionAlgorithm, encryptionKey, saltedPassword);
-		
+    	var saltedPasswordHash = bCrypt.hashSync(password, salt);
+
 		var mongoose = require('mongoose');
 
 		if (mongoose.connection.readyState == 0) { // disconnected
@@ -355,8 +344,7 @@ router.route("/newpassword")
     			username : req.body.username },
     		{ $set: { 
     			salt : salt, 
-    			encryptionKey : encryptionKey,
-    			password : encryptedSaltedPassword
+    			password : saltedPasswordHash
     		}},
     		
     		function (error, result) {
@@ -440,7 +428,9 @@ router.route('/newuser')
 /*
  * Change a user's password
  */
-router.route("/password/:username/:userid/:oldPassword/:newPassword")	
+router.route("/password/:username/:userid/:oldPassword/:newPassword")
+
+    // TODO: change to POST so password not logged
 	
 	.put(function(req, res) {
 		
@@ -481,32 +471,19 @@ router.route("/password/:username/:userid/:oldPassword/:newPassword")
         		}
         		else {
 
-        			// get the user's salt and encryption key
-        			var salt = result[0].salt;
-        			var encryptionKey = result[0].encryptionKey;
-
-        			// salt and encrypt the old and new passwords
+        			// see https://github.com/shaneGirish/bcrypt-nodejs    	
+        	    	var bCrypt = require("./app/bcrypt/bCrypt");        			
+        			var oldSaltedPasswordHash = bCrypt.hashSync(req.params.oldPassword, result[0].salt);
+        			var newSaltedPasswordHash = bCrypt.hashSync(req.params.newPassword, result[0].salt);
         			
-        			var saltedOldPassword = req.params.oldPassword + salt;
-        			var saltedNewPassword = req.params.newPassword + salt;
-        			
-        			var authCrypto = require("./app/crypto/authenticationCrypto");
-        			var encryptionAlgorithm = "aes256";
-        			
-        	    	var encryptedSaltedOldPassword = authCrypto.encrypt(
-        	    		encryptionAlgorithm, encryptionKey, saltedOldPassword);
-        	    	
-        	    	var encryptedSaltedNewPassword = authCrypto.encrypt(
-            	    	encryptionAlgorithm, encryptionKey, saltedNewPassword);
-        			
-        			// save the new salted encrypted password
+        			// save the new salted password hash
         	    	
         	    	User.update(
         	        	{ userid : req.params.userid, 
         	        		username : req.params.username,
-        	        		password : encryptedSaltedOldPassword },
+        	        		password : oldSaltedPasswordHash },
         	        	{ $set: { 
-        	        		password : encryptedSaltedNewPassword
+        	        		password : newSaltedPasswordHash
         	        	}},
         	        		
         	        	function (error, result) {
@@ -516,6 +493,14 @@ router.route("/password/:username/:userid/:oldPassword/:newPassword")
         	    				res.status(500).send(error);
         	    				mongoose.disconnect();
         	        		}
+        	        		else if (!result) {
+        	    				var message = "Invalid query results for ";
+        	        			message += req.params.username;
+        	        			
+        	        			var error = new Error(message);
+        	        			console.log(error);
+        	    				res.status(500).send(error);
+        	    			}
         	        		else if (result != 1) {
         	        			var message = "New password not saved for ";
         	        			message += req.params.username;
@@ -581,6 +566,14 @@ router.route("/salt/:username")
     				console.log(error);
     				res.status(500).send(error);
     			}
+    			else if (!result) {
+    				var message = "Invalid query results for ";
+        			message += req.params.username;
+        			
+        			var error = new Error(message);
+        			console.log(error);
+    				res.status(500).send(error);
+    			}
     			else if (result.length == 0) {
     				var message = "User not found: ";
         			message += req.params.username;
@@ -609,84 +602,50 @@ router.route("/salt/:username")
 /*
  * Delete a user
  */
-router.route('/user/:username/:password')
+router.route('/user/:username/:userid')
 
     .delete(function(req, res) {
     	
-    	var request = require('request');
+    	var mongoose = require('mongoose');
+
+    	if (mongoose.connection.readyState == 0) { // disconnected
+			mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
+		}
     	
-    	var headers = {
-    		'User-Agent': 'Super Agent/0.0.1',
-    		'Content-Type': 'application/x-www-form-urlencoded'
-    	}
+    	var User = require('./app/models/user');
     	
-    	var url = "http://localhost:8080/api/authenticateduser/";
-
-    	var options = {
-			url: url,
-			method: 'POST',
-			headers: headers,
-			form: { username : req.params.username, password : req.params.password }
-		};
-
-    	request (options, function(error, response, body) {
-
-			if (!error && response.statusCode == 200) {
-
-				// convert String key names to field names
-				body = JSON.parse(body);
-				console.log(body);
-
-				if (body.userid == null) {
-					var message = "Sign-in failed - "
-					message += "no id found for " + username
-					res.status(500).send(message);
-				}
-				else
-				{
-					var mongoose = require('mongoose');
-
-			    	if (mongoose.connection.readyState == 0) { // disconnected
-						mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
-					}
-			    	
-			    	var User = require('./app/models/user');
-			    	
-			    	User.remove(
-			    		{ username : req.params.username,
-			    			userid : body.userid },
-			    		function (error, result) {
-			        			
-			        		if (error) {
-			        			console.log(error);
-			        			res.status(500).send(error);
-			        		}
-			        		else if (result.length == 0) {
-			        			var message = "User not found: ";
-			            		message += req.params.username;
-			            			
-			            		var error = new Error(message);
-			            		console.log(error);
-			        			res.status(500).send(error);
-			        		}
-			        		else if (result.length > 1) {
-			        			var message = result.length + " users found: ";
-			            		message += req.params.username;
-			            			
-			            		var error = new Error(message);
-			            		console.log(error);
-			        			res.status(500).send(error);
-			        		}
-			        		else {
-			        			res.json({ success : true });
-			        		}
-			            		
-			            	mongoose.disconnect();
-			            }
-			    	);
-				}
-			}
-    	});    	
+    	User.remove(
+    		{ username : req.params.username,
+    			userid : req.params.userid },
+    		function (error, result) {
+        			
+        		if (error) {
+        			console.log(error);
+        			res.status(500).send(error);
+        		}
+        		else if (result.length == 0) {
+        			var message = "User not found: ";
+            		message += req.params.username;
+            			
+            		var error = new Error(message);
+            		console.log(error);
+        			res.status(500).send(error);
+        		}
+        		else if (result.length > 1) {
+        			var message = result.length + " users found: ";
+            		message += req.params.username;
+            			
+            		var error = new Error(message);
+            		console.log(error);
+        			res.status(500).send(error);
+        		}
+        		else {
+        			res.json({ success : true });
+        		}
+            		
+            	mongoose.disconnect();
+            }
+    	);
     });
 
 
