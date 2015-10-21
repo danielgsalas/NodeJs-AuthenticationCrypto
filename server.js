@@ -86,6 +86,102 @@ router.route('/authenticateduser')
 	});
 
 /*
+ * Change a user's password
+ * 
+ * Required POST params: username, userid, oldPassword, newPassword
+ */
+router.route("/changedpassword")
+
+	.post(function(req, res) {
+		
+		var mongoose = require('mongoose');
+		
+		if (mongoose.connection.readyState == 0) { // disconnected
+			mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
+		}
+
+    	var User = require('./app/models/user');
+    	
+    	User.find(
+    		{ userid : req.body.userid, 
+        		username : req.body.username },
+        	function (error, result) {
+        		if (error) {
+        			console.log(error);
+    				res.status(500).send(error);
+    				mongoose.disconnect();
+        		}
+        		else if (result.length == 0) {
+        			var message = "User not found: ";
+        			message += req.body.username;
+        			
+        			var error = new Error(message);
+        			console.log(error);
+    				res.status(500).send(error);
+    				mongoose.disconnect();
+        		}
+        		else if (result.length > 1) {
+        			var message = result.length + " users found: ";
+        			message += req.body.username;
+        			
+        			var error = new Error(message);
+        			console.log(error);
+    				res.status(500).send(error);
+    				mongoose.disconnect();
+        		}
+        		else {
+
+        			// see https://github.com/shaneGirish/bcrypt-nodejs    	
+        	    	var bCrypt = require("./app/bcrypt/bCrypt");        			
+        			var oldSaltedPasswordHash = bCrypt.hashSync(req.body.oldPassword, result[0].salt);
+        			var newSaltedPasswordHash = bCrypt.hashSync(req.body.newPassword, result[0].salt);
+        			
+        			// save the new salted password hash
+        	    	
+        	    	User.update(
+        	        	{ userid : req.body.userid, 
+        	        		username : req.body.username,
+        	        		password : oldSaltedPasswordHash },
+        	        	{ $set: { 
+        	        		password : newSaltedPasswordHash
+        	        	}},
+        	        		
+        	        	function (error, result) {
+
+        	        		if (error) {        	        			
+        	        			console.log(error);
+        	    				res.status(500).send(error);
+        	    				mongoose.disconnect();
+        	        		}
+        	        		else if (!result) {
+        	    				var message = "Invalid query results for ";
+        	        			message += req.body.username;
+        	        			
+        	        			var error = new Error(message);
+        	        			console.log(error);
+        	    				res.status(500).send(error);
+        	    			}
+        	        		else if (result != 1) {
+        	        			var message = "New password not saved for ";
+        	        			message += req.body.username;
+        	        			
+        	        			var error = new Error(message);
+        	        			console.log(error);
+        	    				res.status(500).send(error);
+        	    				mongoose.disconnect();
+        	        		}
+        	        		else {
+        	        			res.json({ success : true });
+        	        		}
+        	        	}
+        	        );
+        		}
+        	}		
+    	);		
+	});
+
+
+/*
  * Automated integration test.
  * 
  * Example: http://localhost:8080/api/fulltest
@@ -165,16 +261,18 @@ router.route('/fulltest')
 						var passwordLength = 8;
 						var newPassword = authCrypto.getRandomChars(passwordLength);
 						
-						var url = "http://localhost:8080/api/password/";
-						url += username + "/";
-						url += userid + "/";
-						url += oldPassword + "/";
-						url += newPassword;
+						var url = "http://localhost:8080/api/changedpassword";
 						
 						var options = {
 							url: url,
-							method: 'PUT',
-							headers: headers
+							method: 'POST',
+							headers: headers,
+							form: {
+								username : username,
+								userid : userid,
+								oldPassword : oldPassword,
+								newPassword : newPassword								
+							}
 						};
 						
 						console.log("-- CHANGE password --");
@@ -425,101 +523,6 @@ router.route('/newuser')
         });
     });
 
-/*
- * Change a user's password
- */
-router.route("/password/:username/:userid/:oldPassword/:newPassword")
-
-    // TODO: change to POST so password not logged
-	
-	.put(function(req, res) {
-		
-		var mongoose = require('mongoose');
-		
-		if (mongoose.connection.readyState == 0) { // disconnected
-			mongoose.connect('mongodb://localhost:27017/authentication_tutorial');
-		}
-
-    	var User = require('./app/models/user');
-    	
-    	User.find(
-    		{ userid : req.params.userid, 
-        		username : req.params.username },
-        	function (error, result) {
-        		if (error) {
-        			console.log(error);
-    				res.status(500).send(error);
-    				mongoose.disconnect();
-        		}
-        		else if (result.length == 0) {
-        			var message = "User not found: ";
-        			message += req.params.username;
-        			
-        			var error = new Error(message);
-        			console.log(error);
-    				res.status(500).send(error);
-    				mongoose.disconnect();
-        		}
-        		else if (result.length > 1) {
-        			var message = result.length + " users found: ";
-        			message += req.params.username;
-        			
-        			var error = new Error(message);
-        			console.log(error);
-    				res.status(500).send(error);
-    				mongoose.disconnect();
-        		}
-        		else {
-
-        			// see https://github.com/shaneGirish/bcrypt-nodejs    	
-        	    	var bCrypt = require("./app/bcrypt/bCrypt");        			
-        			var oldSaltedPasswordHash = bCrypt.hashSync(req.params.oldPassword, result[0].salt);
-        			var newSaltedPasswordHash = bCrypt.hashSync(req.params.newPassword, result[0].salt);
-        			
-        			// save the new salted password hash
-        	    	
-        	    	User.update(
-        	        	{ userid : req.params.userid, 
-        	        		username : req.params.username,
-        	        		password : oldSaltedPasswordHash },
-        	        	{ $set: { 
-        	        		password : newSaltedPasswordHash
-        	        	}},
-        	        		
-        	        	function (error, result) {
-
-        	        		if (error) {        	        			
-        	        			console.log(error);
-        	    				res.status(500).send(error);
-        	    				mongoose.disconnect();
-        	        		}
-        	        		else if (!result) {
-        	    				var message = "Invalid query results for ";
-        	        			message += req.params.username;
-        	        			
-        	        			var error = new Error(message);
-        	        			console.log(error);
-        	    				res.status(500).send(error);
-        	    			}
-        	        		else if (result != 1) {
-        	        			var message = "New password not saved for ";
-        	        			message += req.params.username;
-        	        			
-        	        			var error = new Error(message);
-        	        			console.log(error);
-        	    				res.status(500).send(error);
-        	    				mongoose.disconnect();
-        	        		}
-        	        		else {
-        	        			res.json({ success : true });
-        	        		}
-        	        	}
-        	        );
-        		}
-        	}		
-    	);
-		
-	});
 
 // Create a string of random digits and letters (upper and lower case).
 // Example: http://localhost:8080/api/randomChars/6
