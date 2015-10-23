@@ -49,11 +49,11 @@ router.route('/authenticateduser')
     	
     	// see https://github.com/shaneGirish/bcrypt-nodejs    	
     	var bCrypt = require("./app/bcrypt/bCrypt");    				
-		var saltedPasswordHash = bCrypt.hashSync(req.body.password, req.body.salt);
+		var encryptedPassword = bCrypt.hashSync(req.body.password, req.body.salt);
 
     	User.find(
         	{ username : req.body.username,
-		      password : saltedPasswordHash },
+		      password : encryptedPassword },
             function (error, result) {
         		if (error) {
     				console.log(error);
@@ -133,17 +133,17 @@ router.route("/changedpassword")
 
         			// see https://github.com/shaneGirish/bcrypt-nodejs    	
         	    	var bCrypt = require("./app/bcrypt/bCrypt");        			
-        			var oldSaltedPasswordHash = bCrypt.hashSync(req.body.oldPassword, result[0].salt);
-        			var newSaltedPasswordHash = bCrypt.hashSync(req.body.newPassword, result[0].salt);
+        			var oldEncryptedPassword = bCrypt.hashSync(req.body.oldPassword, result[0].salt);
+        			var newEncryptedPassword = bCrypt.hashSync(req.body.newPassword, result[0].salt);
         			
         			// save the new salted password hash
         	    	
         	    	User.update(
         	        	{ userid : req.body.userid, 
         	        		username : req.body.username,
-        	        		password : oldSaltedPasswordHash },
+        	        		password : oldEncryptedPassword },
         	        	{ $set: { 
-        	        		password : newSaltedPasswordHash
+        	        		password : newEncryptedPassword
         	        	}},
         	        		
         	        	function (error, result) {
@@ -427,7 +427,7 @@ router.route("/newpassword")
     	var bCrypt = require("./app/bcrypt/bCrypt");
     	var numberOfRounds = 10;
     	var salt = bCrypt.genSaltSync(numberOfRounds);
-    	var saltedPasswordHash = bCrypt.hashSync(password, salt);
+    	var encryptedPassword = bCrypt.hashSync(password, salt);
 
 		var mongoose = require('mongoose');
 
@@ -442,7 +442,7 @@ router.route("/newpassword")
     			username : req.body.username },
     		{ $set: { 
     			salt : salt, 
-    			password : saltedPasswordHash
+    			password : encryptedPassword
     		}},
     		
     		function (error, result) {
